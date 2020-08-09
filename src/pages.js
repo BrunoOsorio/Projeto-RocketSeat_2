@@ -1,4 +1,4 @@
-const database = require('./database/db.js')
+const Database = require('./database/db.js')
 
 const { subjects, weekdays, getSubject, convertHoursToMinutes} = require('./utils/format')
 
@@ -27,10 +27,10 @@ async function pageStudy(req, res) {
         FROM class_schedule
         WHERE class_schedule.class_id = classes.id
         AND class_schedule.weekday = ${filters.weekday}
-        AND class_schedule.time_from <= ${filters.time}
-        AND class_schedule.time_to > ${filters.time}
+        AND class_schedule.time_from <= ${timeToMinutes}
+        AND class_schedule.time_to > ${timeToMinutes}
     )
-    AND classes.subject - '${filter.subject}'
+    AND classes.subject = "${filters.subject}"
     `
 
     //caso haja erro na hora da consulta do banco de dados.
@@ -38,7 +38,11 @@ async function pageStudy(req, res) {
         const db = await Database
         const proffys = await db.all(query)
 
-        return res.render('study.html', { proffys, subjects, filter, weekdays })
+        proffys.map((proffy) => {
+            proffy.subject = getSubject(proffy.subject)
+        })
+
+        return res.render('study.html', { proffys, subjects, filters, weekdays })
 
     } catch (error) {
         console.log(error)
@@ -47,27 +51,52 @@ async function pageStudy(req, res) {
 }
 
 function pageGiveClasses(req, res){
-    const data = req.query
+    return res.render("give-classes.html", {subjects, weekdays})
+}
 
-    // se tiver dados (data)
-    const isNotEmpty = Object.keys(data).length > 0
-    //adicionar a lista de proffys
-    if (isNotEmpty) {
+async function saveClasses(req, res) {
+    const createProffy = require("./database/createProffy")
 
-        data.subject = getSubject(data.subject)
-
-        //adicionar data a lista de proffys
-        proffys.push(data)
-
-        return res.redirect("/study")
+    const proffyValue = {
+        name: req.body.name,
+        avatar: req.body.avatar,
+        whatsapp: req.body.whatsapp,
+        bio: req.body.bio
     }
 
-    // se nao, mostrar a pagina
-    return res.render("give-classes.html", {subjects, weekdays})
+    const classValue = {
+        subject: req.body.subject,
+        cost: req.body.cost
+    }
+
+    const classScheduleValues = req.body.weekday.map((weekday, index) => {
+
+        return {
+            weekday,
+            time_from: convertHoursToMinutes(req.body.time_from[index]),
+            time_to: convertHoursToMinutes(req.body.time_to[index])
+        }
+    })
+
+    try {
+        const db = await Database 
+        await createProffy(db, { proffyValue, classValue, classScheduleValues })
+
+        let queryString = "?subject=" + req.body.subject
+        queryString += "&weekday=" + req.body.weekday[0]
+        queryString += "&time=" + req.body.time_from[0]
+        
+        return res.redirect("/study" + queryString)
+
+    } catch (error) {
+        console.log(error)        
+    }
+    
 }
 
 module.exports = {
     pageLanding,
     pageStudy,
-    pageGiveClasses
+    pageGiveClasses,
+    saveClasses
 }
